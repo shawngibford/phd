@@ -22,7 +22,7 @@ Parse every entry that begins with `## H-`. **Only parse rows that appear below 
 - **status** — the status token from the header (`KEPT`, `DISCARDED`, `FAILED`, `PENDING`, `RUNNING`)
 - **hypothesis** — the `hypothesis:` field value
 - **change** — the `change:` field value
-- **metric line** — the full `metric:` field value (includes name, before→after, best-so-far/no-improvement, budget, seed)
+- **metric line** — the full `metric:` field value. For multi-seed rows this is `name  before → mean ± std   (… n=K)   budget: Ts   seeds: …` — capture the **mean, the ± std, and n** (single-seed/legacy rows have no `± std` and use `seed:`).
 - **baseline line** — the full `baseline:` field value
 - **artifacts** — the `artifacts:` field value (run directory + commit)
 - **note** — the `note:` field value (may be absent)
@@ -83,19 +83,26 @@ The results section must:
 2. **Report each KEPT hypothesis** in chronological order (by date, then hid) as a dedicated subsection: `### H-NNN — <short title derived from the hypothesis text>`. Each subsection must include:
 
    - A full prose description of what was changed (from the `change:` field), written as a complete academic sentence. Do not use bullet points for this — prose only.
-   - The metric improvement in precise quantitative terms: the before and after values, the percentage improvement, and whether this represented the best result at the time of keeping.
+   - The metric improvement in precise quantitative terms, reported as **mean ± std over n seeds** (e.g. "rel-L2 fell from 0.041 to 0.029 ± 0.003 across n=5 seeds"), the percentage improvement of the means, and whether the gain was **statistically meaningful** (the ledger `note:` flags "significant (>1σ)" vs "within seed noise"). Never report a multi-seed result as a bare point estimate — always carry the ± std. If a row is single-seed, say so explicitly (it is weaker evidence).
    - Whether a quantum-advantage claim is supported, using the language prescribed in Step 3. If advantage is demonstrated, state the ratio explicitly (quantum score vs. classical baseline score). If no baseline is recorded or the baseline was not beaten, state this plainly and without apology — negative or inconclusive findings are still findings.
    - A reference to the artifact directory and commit (if available), phrased as: "Full experiment artifacts are archived in `<artifacts path>`" or similar.
    - Any observation from the `note:` field, incorporated naturally into the prose — do not reproduce the note verbatim but paraphrase it as a scientific observation.
 
-3. **Include a summary table** (Markdown table) after all individual subsections, with columns:
+3. **Reference the figures.** If `paper/figures/` exists (produced by `/phd:analyze`), embed the
+   relevant figures in the prose with Markdown image links — at minimum `trajectory.svg` (the
+   best-score arc with error bars) near the summary, and the per-hypothesis `seed-spread-hNNN.svg` /
+   `convergence-hNNN.svg` beside the subsection that discusses that hypothesis. Each figure gets a
+   caption stating what it shows and its n. If `paper/figures/` is absent, note that figures have
+   not been generated and recommend running `/phd:analyze` before `/phd:defend`.
 
-   | Hypothesis | Date | Change | Metric (before → after) | Quantum Advantage |
+4. **Include a summary table** (Markdown table) after all individual subsections, with columns:
+
+   | Hypothesis | Date | Change | Metric (before → mean ± std, n) | Quantum Advantage |
    |---|---|---|---|---|
 
    Populate each row from the KEPT ledger entries. In the "Quantum Advantage" column, write `Yes (ratio: X.XX)`, `No (classical baseline not beaten)`, or `Not assessed (no baseline)` as appropriate.
 
-4. **Close with a short paragraph** summarizing the overall trajectory of results: what the best achieved score was, how many hypotheses were tested in total (KEPT + DISCARDED + FAILED; read all rows to count), what fraction were kept, and — if any quantum advantage was demonstrated — a one-sentence statement of what it was. If no quantum advantage was demonstrated across any KEPT row, state that plainly: "No quantum advantage over classical baselines was demonstrated in this experimental run." This sentence must appear whenever it is true; it must not be omitted or softened.
+5. **Close with a short paragraph** summarizing the overall trajectory of results: what the best achieved score was, how many hypotheses were tested in total (KEPT + DISCARDED + FAILED; read all rows to count), what fraction were kept, and — if any quantum advantage was demonstrated — a one-sentence statement of what it was. If no quantum advantage was demonstrated across any KEPT row, state that plainly: "No quantum advantage over classical baselines was demonstrated in this experimental run." This sentence must appear whenever it is true; it must not be omitted or softened.
 
 ### Prose style requirements
 

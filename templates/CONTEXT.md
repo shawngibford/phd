@@ -14,6 +14,7 @@ research_question: <!-- one-sentence falsifiable question -->
 
 time_budget_s: <!-- wall-clock seconds per experiment, e.g. 300 -->
 parallel_workers: <!-- K concurrent experiments, e.g. 2 -->
+seeds_per_hypothesis: <!-- seeds run per hypothesis for mean±std (default 3; 1 = single-seed, not recommended) -->
 
 ## Background
 

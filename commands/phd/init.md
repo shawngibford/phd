@@ -44,6 +44,10 @@ Default is 300. Enter a number, or press enter to accept 300:"
 "How many experiments should run in parallel? On one M1 Pro, throughput peaks around K=2–3 (more workers share memory bandwidth and slow each other down). Honest recommendation: start with K=2.
 Enter a number, or press enter to accept 2:"
 
+**Q6 — Seeds per hypothesis**
+"How many random seeds should each hypothesis run over before it's scored? Results are kept on the **mean** across seeds, with ± std reported — a single-seed number isn't publishable, and running multiple seeds is how PHD prevents seed-cherry-picking. Recommended: 3 (use 5 for final/headline results; 1 only for quick throwaway checks). The held-out seed 1337 is never used for runs.
+Default is 3. Enter a number, or press enter to accept 3:"
+
 After collecting all answers, confirm with a summary:
 
 > "Here's what I have:
@@ -52,6 +56,7 @@ After collecting all answers, confirm with a summary:
 >   Starting hypothesis (H-001): <hypothesis>
 >   Time budget per run: <T> seconds
 >   Parallel workers: K=<K>
+>   Seeds per hypothesis: <S>
 >
 > Ready to scaffold? (yes / edit)"
 
@@ -86,6 +91,7 @@ Once confirmed, create the following structure in the **current working director
 - `research_question` → <question>
 - `time_budget_s` → <T>
 - `parallel_workers` → <K>
+- `seeds_per_hypothesis` → <S> (default 3)
 - Leave constraints and prior decisions as placeholder text for the user to fill in.
 
 **LEDGER.md** — copy the template. After the example row (H-007) and the blank template row, append a real H-001 entry:
@@ -114,8 +120,9 @@ Copy the Julia harness files from the PHD plugin into this directory:
   harness/device.jl      — hardware autodetect (CPU-threads only, v1)
   harness/metric.jl      — ExperimentResult contract + SciML/Yao.jl scorers
   harness/runner.jl      — detached-job launcher + per-epoch checkpoint writer
-  harness/poller.jl      — watches runs/*/status, fires keep/discard actions
+  harness/poller.jl      — watches runs/*/status, aggregates seed groups, keep/discard
   harness/supervisor.jl  — the daemon loop: launch → poll → keep/discard → propose next
+  harness/plot.jl        — pure-Julia SVG figures (trajectory ± std, convergence, seed-spread)
 
 These files are built as part of the PHD plugin but are not auto-copied into new
 projects. Copy or symlink them from the plugin directory:

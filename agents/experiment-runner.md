@@ -53,19 +53,23 @@ Adapted from [autoresearch](https://github.com/karpathy/autoresearch) (MIT).
 
 ## What you return
 
-A spec the spawning command can drop straight into `job.json` (it assigns the `hid` and launches):
+A spec the spawning command turns into a **seed group** (it assigns the `hid`, picks the K seeds
+from `seeds_per_hypothesis`, and launches one job per seed):
 
 ```
 HYPOTHESIS: <one falsifiable sentence: <change> lowers <metric> on <system> vs <best/baseline>>
 CHANGE:     <the one modification + approx scale, axis: <axis from experiment.md>>
 AXIS:       <which search axis this exercises>
 EXPECT:     <expected effect> because <mechanism>     # goes into the ledger note:
-SEED:       <suggested seed — NOT 1337>
 BUDGET_S:   <suggested budget; default from CONTEXT.md>
 BASELINE:   <classical-baseline plan for quantum work | n/a>
-KILL_IF:    <refutation condition; default: score >= current best => discard>
+KILL_IF:    <refutation condition; default: mean over seeds >= current best mean => discard>
 DEAD_END_CHECK: <"clear" | "near-duplicate of H-NNN discarded because …, retrying because …">
 ```
+
+You propose the **change**, not the seeds: the loop runs it over K seeds
+(`seeds_per_hypothesis`, default 3; never 1337) and keeps on the **mean ± std**. Frame the
+hypothesis and kill criterion in terms of the aggregate, not a single run.
 
 If `experiment.md` is unsteered or the ledger is empty, say so plainly and propose a safe first/next
 step rather than inventing ambitious structure.
@@ -77,5 +81,6 @@ step rather than inventing ambitious structure.
 1. **Propose only.** Never write `job.json`, launch a job, or modify `LEDGER.md`/`STATE.md`.
 2. **One change, one axis.** Reviewable in under two minutes. Split anything bigger.
 3. **No dead-end re-tries** without an explicit, justified reason.
-4. **Never touch the held-out set or seed 1337.** Suggest any seed except 1337.
-5. **Quantum advantage requires a planned, fairly-tuned classical baseline.** State it or mark the claim speculative.
+4. **Never touch the held-out set or seed 1337.** The loop assigns run seeds (never 1337); your change must not depend on a particular seed or read the held-out trajectory.
+5. **Frame on the aggregate.** The hypothesis is kept on the mean ± std over K seeds, not a single run.
+6. **Quantum advantage requires a planned, fairly-tuned classical baseline.** State it or mark the claim speculative.

@@ -266,11 +266,36 @@ function scan_job_dirs(project_root::AbstractString)::Vector{String}
     dirs = String[]
     for entry in sort(readdir(runs_dir))
         d = joinpath(runs_dir, entry)
-        if isdir(d) && isfile(joinpath(d, "job.json"))
-            push!(dirs, d)
+        isdir(d) || continue
+        if isfile(joinpath(d, "job.json"))
+            push!(dirs, d)                       # flat job dir (legacy / manual / K=1)
+        elseif isfile(joinpath(d, "group.json"))
+            # seed group: descend one level for child seed-job dirs
+            for sub in sort(readdir(d))
+                cd = joinpath(d, sub)
+                isdir(cd) && isfile(joinpath(cd, "job.json")) && push!(dirs, cd)
+            end
         end
     end
     return dirs
+end
+
+# ---------------------------------------------------------------------------
+# Seed-group helpers (Slice 4 — a hypothesis = K sibling seed jobs under runs/hNNN/)
+# ---------------------------------------------------------------------------
+
+"""A job dir is a seed-group child iff its parent dir holds a `group.json`."""
+is_group_child(jobdir::AbstractString)::Bool =
+    isfile(joinpath(dirname(jobdir), "group.json"))
+
+"""The group dir owning a child job dir (the parent)."""
+group_dir_of(jobdir::AbstractString)::String = dirname(jobdir)
+
+"""Child seed-job dirs of a group, sorted (s1, s2, …)."""
+function group_children(groupdir::AbstractString)::Vector{String}
+    isdir(groupdir) || return String[]
+    return [joinpath(groupdir, s) for s in sort(readdir(groupdir))
+            if isdir(joinpath(groupdir, s)) && isfile(joinpath(groupdir, s, "job.json"))]
 end
 
 """

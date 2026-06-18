@@ -18,7 +18,7 @@ Or for local development:
 claude --plugin-dir ./phd
 ```
 
-## Commands (Slices 1–3 built)
+## Commands (Slices 1–4 built)
 
 The full `/phd:*` lifecycle is wired. Verbs: **P**robe · **H**ypothesize · **D**efend.
 
@@ -28,12 +28,16 @@ The full `/phd:*` lifecycle is wired. Verbs: **P**robe · **H**ypothesize · **D
 | `/phd:frame` | Probe | Socratic framing → one falsifiable research question + scope, into `CONTEXT.md` |
 | `/phd:probe` | Probe | Cited literature review + prior-art map + gap analysis → `paper/related-work.md` |
 | `/phd:hypothesize` | Hypothesize | Turn findings into one testable hypothesis; append a PENDING row to `LEDGER.md` |
-| `/phd:run` | Hypothesize | Launch one detached experiment, or `--tick` one supervisor pass |
+| `/phd:run` | Hypothesize | Launch a hypothesis as a multi-seed group (or `--tick` one supervisor pass) |
 | `/phd:daemon` | Hypothesize | `start`/`stop`/`status` the scheduled experiment loop; session can close |
-| `/phd:verify` | Defend | Reproduce KEPT rows; audit leakage / p-hacking / baselines / citations |
-| `/phd:write` | Defend | Draft the results section from verified KEPT rows |
+| `/phd:verify` | Defend | Reproduce KEPT rows; audit leakage / seed-robustness / baselines / citations |
+| `/phd:analyze` | Defend | Generate figures (trajectory ± std, convergence, seed-spread) → `paper/figures/` |
+| `/phd:write` | Defend | Draft the results section (mean ± std, figures) from verified KEPT rows |
 | `/phd:review` | Defend | Dual review: code over-engineering (governor) + manuscript peer review |
 | `/phd:defend` | Defend | Gate → compile → AI-disclosure → export the final manuscript |
+
+Experiments run over **K seeds** (`seeds_per_hypothesis`, default 3); results are kept on the
+**mean ± std** and figures lead with error bars — single-seed point estimates are never reported.
 
 **Skills** (auto-trigger, no slash): `code-minimalism` (governor), `experiment-loop` (loop
 protocol), and the academic surface `academic-paper`, `academic-paper-reviewer`,

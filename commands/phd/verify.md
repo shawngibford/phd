@@ -61,10 +61,14 @@ For every selected row, check each. Any hit is a finding, not a pass.
 1. **Data leakage.** Confirm the held-out trajectory (fixed seed 1337 per CONTEXT.md)
    was not used during training/search. Inspect `job.json`/`meta` for the split. If the
    held-out set could have been touched, flag **LEAKAGE**.
-2. **P-hacking across seeds.** Scan the ledger for many same-change runs differing only
-   by seed where only the best was KEPT. If a KEPT result is a seed-cherry-pick rather
-   than a robust effect, flag **SEED-SELECTION** and recommend reporting the seed
-   distribution, not the max.
+2. **Seed robustness & aggregation consistency.** The loop now runs each hypothesis over K
+   seeds and keeps on the **mean** (rows carry `mean ± std, n=K, seeds: …`), so blatant
+   seed-cherry-picking is structurally prevented. Verify instead that the row is *honest*:
+   re-aggregate the K child results under `runs/<hid>/s*/result.json` and confirm the row's
+   mean ± std and n match (flag **AGG-DRIFT** on mismatch); confirm n ≥ 2 and the seed list
+   excludes the held-out 1337; and if the `note:` says "within seed noise (≤1σ)", ensure the
+   prose does **not** present the improvement as decisive. A single-seed (n=1) KEPT row is
+   itself a finding — flag **SINGLE-SEED** and recommend re-running with `seeds_per_hypothesis ≥ 3`.
 3. **Unfair or missing baseline (quantum candor).** For any row whose claim implies
    advantage: the `baseline:` field must contain `BEATS classical ✓` *and* a real,
    fairly-tuned classical score in `meta`. If the baseline is absent, untuned, or not

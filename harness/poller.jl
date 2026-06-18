@@ -51,6 +51,13 @@ include(joinpath(POLLER_DIR, "jobctl.jl"))
 @isdefined(_POLLER_LOADED) && return
 const _POLLER_LOADED = true
 
+# Statistics helpers for multi-seed aggregation (Slice 4).
+include(joinpath(POLLER_DIR, "metric.jl"))
+using .MetricContract: aggregate, is_improvement_agg
+
+# Held-out evaluation seed — NEVER used for a training run (leakage guard, §5).
+const HELD_OUT_SEED = 1337
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -159,8 +166,9 @@ function propose_next_job(
     project_root :: AbstractString,
     best         :: Dict{String,Any},
 )::Dict{String,Any}
-    # Sweep axes (Slice 1 — fully deterministic)
-    seeds          = [42, 1337, 7, 2024, 314, 99, 8675309, 2718]
+    # Sweep axes (Slice 1 — fully deterministic). 1337 is the held-out eval seed and
+    # is excluded from run seeds (leakage guard, §5).
+    seeds          = [42, 7, 2024, 314, 99, 8675309, 2718, 11]
     max_epochs_set = [50, 100, 200, 150]
     lr_set         = [0.01, 0.05, 0.1, 0.005, 0.001]
 
@@ -272,6 +280,9 @@ function build_ledger_row(
     best_before  :: Float64,
     project_root :: AbstractString;
     note         :: AbstractString = "",
+    score_std    :: Union{Float64,Nothing} = nothing,   # group: std across seeds
+    n_seeds      :: Union{Int,Nothing}     = nothing,   # group: number of seeds
+    seeds        :: Union{Vector,Nothing}  = nothing,   # group: the seed list
 )::String
     date       = _today_str()
     ledger_hid = _hid_to_ledger(hid)
@@ -287,10 +298,20 @@ function build_ledger_row(
 
     new_score  = Float64(get(result, "score", Inf))
     before_str = isinf(best_before) ? "none" : string(round(best_before, sigdigits=4))
-    after_str  = isnan(new_score) ? "NaN" :
+    after_core = isnan(new_score) ? "NaN" :
                  isinf(new_score) ? "Inf" :
                  string(round(new_score, sigdigits=4))
-    improvement_tag = status == "KEPT" ? "(best so far)" : "(no improvement)"
+    # Multi-seed (group): append "± std" and report n + the seed list. Single-seed
+    # (legacy / manual) rows keep the original "→ <value> … seed: <seed>" shape.
+    is_group = n_seeds !== nothing
+    # Only show "± std" when there are ≥2 seeds (a single seed has no variance estimate).
+    show_std = is_group && n_seeds > 1 && score_std !== nothing && !isnan(score_std)
+    after_str = show_std ? "$(after_core) ± $(string(round(score_std, sigdigits=2)))" : after_core
+    n_tag = is_group ? ", n=$(n_seeds)" : ""
+    improvement_tag = status == "KEPT" ? "(best so far$(n_tag))" : "(no improvement$(n_tag))"
+    seed_field = is_group ?
+        "seeds: " * (seeds === nothing ? "?" : join(seeds, ",")) :
+        "seed: $(seed)"
     budget_str = isa(budget_s, Number) ? string(round(Float64(budget_s), digits=0)) : string(budget_s)
 
     # Baseline / quantum info from meta
@@ -319,7 +340,7 @@ function build_ledger_row(
     row = """## $(ledger_hid) · $(date) · $(status)
 hypothesis: $(hypothesis)
 change: $(change)
-metric: $(metric_name)  $(before_str) → $(after_str)   $(improvement_tag)   budget: $(budget_str)s   seed: $(seed)
+metric: $(metric_name)  $(before_str) → $(after_str)   $(improvement_tag)   budget: $(budget_str)s   $(seed_field)
 baseline: $(baseline_line)
 artifacts: runs/$(hid)/  commit: $(sha)
 note: $(note)"""
@@ -467,6 +488,190 @@ function _propose_and_launch(
 end
 
 # ---------------------------------------------------------------------------
+# Multi-seed experiment groups (Slice 4)
+#
+# A hypothesis is a *group* of K sibling seed-jobs under runs/hNNN/: the group dir
+# holds group.json (the shared change), and runs/hNNN/sM/ are normal single-seed
+# jobs (so runner.jl is reused unchanged). When all K children are terminal the
+# group is reaped ONCE: aggregate to mean±std, one keep/discard decision, one
+# ledger row. K=1 degenerates to a single-seed group (std=0).
+# ---------------------------------------------------------------------------
+
+const SEED_POOL = [42, 7, 2024, 314, 99, 8675309, 2718, 11, 271, 1618]  # excludes 1337
+
+"""Read seeds_per_hypothesis from CONTEXT.md (default 3, floor 1)."""
+function _seeds_per_hypothesis(project_root::AbstractString)::Int
+    p = joinpath(project_root, "CONTEXT.md")
+    if isfile(p)
+        for line in eachline(p)
+            m = match(r"seeds_per_hypothesis\s*[:=]\s*(\d+)", line)
+            m !== nothing && return max(1, parse(Int, m.captures[1]))
+        end
+    end
+    return 3
+end
+
+"""Number of existing seed-groups = top-level runs/hNNN/ dirs (group.json or legacy job.json)."""
+function _count_groups(project_root::AbstractString)::Int
+    runs_dir = joinpath(project_root, "runs")
+    isdir(runs_dir) || return 0
+    n = 0
+    for e in readdir(runs_dir)
+        d = joinpath(runs_dir, e)
+        isdir(d) && match(r"^h\d+$", e) !== nothing && (n += 1)
+    end
+    return n
+end
+
+"""Pick K distinct seeds for a group, deterministic per group index, never 1337."""
+function _seeds_for_group(K::Int, group_idx::Int)::Vector{Int}
+    pool = SEED_POOL
+    [pool[((group_idx + j) % length(pool)) + 1] for j in 0:(K-1)]
+end
+
+"""
+    _propose_and_launch_group(project_root, best) -> Nothing
+
+Propose ONE change, then launch it across K seeds as runs/hNNN/s1..sK detached jobs.
+"""
+function _propose_and_launch_group(project_root::AbstractString, best::Dict{String,Any})::Nothing
+    K         = _seeds_per_hypothesis(project_root)
+    group_idx = _count_groups(project_root)
+    spec      = propose_next_job(project_root, best)   # reuse sweep for the shared change
+    hid       = spec["hid"]                            # group id, e.g. "h007"
+    seeds     = _seeds_for_group(K, group_idx)
+
+    groupdir = joinpath(project_root, "runs", hid)
+    mkpath(groupdir)
+    # group.json marks this as a seed group and records the shared spec + seeds.
+    group_meta = copy(spec)
+    delete!(group_meta, "seed")
+    group_meta["seeds"]   = seeds
+    group_meta["n_seeds"] = K
+    _jc_write_json_atomic(joinpath(groupdir, "group.json"), group_meta)
+
+    for (i, sd) in enumerate(seeds)
+        child = joinpath(groupdir, "s$(i)")
+        mkpath(child)
+        cj = copy(spec)
+        cj["seed"]  = sd
+        cj["group"] = hid
+        _jc_write_json_atomic(joinpath(child, "job.json"), cj)
+        _jc_write_atomic(joinpath(child, "status"), "PENDING")
+        launch_detached(child)
+    end
+    @info "_propose_and_launch_group: launched $hid with $K seeds $(seeds)"
+    return nothing
+end
+
+"""A child is terminal iff DONE, or FAILED past the retry cap (so it won't resume)."""
+function _child_terminal(jobdir::AbstractString)::Bool
+    sp = joinpath(jobdir, "status")
+    st = isfile(sp) ? strip(read(sp, String)) : "PENDING"
+    st == "DONE" && return true
+    st == "FAILED" && return read_retry_count(jobdir) >= RETRY_CAP
+    return false
+end
+
+"""Per-child lifecycle inside a group: launch PENDING, resume stale/failed. No ledger, no propose."""
+function _tend_child(jobdir::AbstractString)::Nothing
+    sp = joinpath(jobdir, "status")
+    st = isfile(sp) ? strip(read(sp, String)) : "PENDING"
+    if st == "FAILED"
+        if read_retry_count(jobdir) < RETRY_CAP
+            write_retry_count(jobdir, read_retry_count(jobdir) + 1)
+            launch_detached(jobdir; resume=true)
+        end                                   # else: terminal, counted as a lost seed
+    elseif st == "RUNNING"
+        if is_heartbeat_stale(jobdir) && read_retry_count(jobdir) < RETRY_CAP
+            write_retry_count(jobdir, read_retry_count(jobdir) + 1)
+            _jc_write_atomic(sp, "FAILED")
+            launch_detached(jobdir; resume=true)
+        end
+    elseif st == "PENDING"
+        (time() - mtime(sp)) > PENDING_GRACE_S && launch_detached(jobdir)
+    end
+    return nothing
+end
+
+"""
+    reap_group_done(groupdir, project_root) -> Nothing
+
+All children terminal → aggregate their scores to mean±std, one keep/discard
+decision against best.json, one ledger row, propose the next group.
+"""
+function reap_group_done(groupdir::AbstractString, project_root::AbstractString)::Nothing
+    hid      = basename(groupdir)
+    children = group_children(groupdir)
+    gmeta    = isfile(joinpath(groupdir, "group.json")) ?
+               _jc_read_json(joinpath(groupdir, "group.json")) : Dict{String,Any}()
+
+    scores = Float64[]
+    seeds  = Any[]
+    for c in children
+        rp = joinpath(c, "result.json")
+        if isfile(rp)
+            r = _jc_read_json(rp)
+            push!(scores, Float64(get(r, "score", Inf)))
+        else
+            push!(scores, Inf)                # crashed/unrecoverable seed
+        end
+        jp = joinpath(c, "job.json")
+        isfile(jp) && push!(seeds, get(_jc_read_json(jp), "seed", "?"))
+    end
+
+    agg  = aggregate(scores)                  # (mean, std, n) — drops Inf/NaN seeds
+    best = read_best(project_root)
+    best_mean = Float64(get(best, "score", Inf))
+    best_std  = Float64(get(best, "std", 0.0))
+    dec  = is_improvement_agg(agg.mean, agg.std, best_mean, best_std)
+
+    # Aggregate result for the group dir + baseline meta from the first child that has it.
+    child_meta = Dict{String,Any}()
+    for c in children
+        rp = joinpath(c, "result.json")
+        if isfile(rp)
+            m = get(_jc_read_json(rp), "meta", Dict())
+            isa(m, Dict) && (child_meta = m); break
+        end
+    end
+    group_result = Dict{String,Any}(
+        "hid" => hid, "score" => agg.mean, "wall_s" => 0.0, "backend" => "cpu",
+        "meta" => merge(child_meta, Dict{String,Any}(
+            "score_std" => agg.std, "n_seeds" => agg.n, "seeds" => seeds,
+            "seed_scores" => scores)),
+    )
+    _jc_write_json_atomic(joinpath(groupdir, "result.json"), group_result)
+
+    # A multi-seed group needs ≥2 valid seeds to be meaningful; a deliberately
+    # single-seed group (K=1) is allowed to decide on its one score.
+    min_valid = length(children) >= 2 ? 2 : 1
+    if agg.n < min_valid
+        status = "DISCARDED"
+        note   = "inconclusive: only $(agg.n) of $(length(children)) seeds produced a valid score"
+    elseif dec.keep
+        status = "KEPT"
+        sig    = dec.significant ? "significant (>1σ)" : "within seed noise (≤1σ)"
+        note   = "kept on mean of $(agg.n) seeds; improvement $(sig)"
+        write_best(project_root, Dict{String,Any}(
+            "hid" => hid, "score" => agg.mean, "mean" => agg.mean, "std" => agg.std,
+            "n" => agg.n, "jobdir" => groupdir))
+    else
+        status = "DISCARDED"
+        note   = "mean $(round(agg.mean, sigdigits=4)) over $(agg.n) seeds did not improve on best $(round(best_mean, sigdigits=4))"
+    end
+
+    row = build_ledger_row(status, hid, gmeta, group_result, best_mean, project_root;
+                           note=note, score_std=agg.std, n_seeds=agg.n, seeds=seeds)
+    append_ledger_row(project_root, row)
+    _jc_write_atomic(joinpath(groupdir, ".reaped"), "reaped")
+    @info "reap_group_done: $hid $status  mean=$(round(agg.mean,sigdigits=5))±$(round(agg.std,sigdigits=2)) (n=$(agg.n))"
+
+    _propose_and_launch_group(project_root, read_best(project_root))
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
 # Main tick
 # ---------------------------------------------------------------------------
 
@@ -482,31 +687,45 @@ function tick(project_root::AbstractString)::Nothing
     dirs = scan_job_dirs(project_root)
 
     if isempty(dirs)
-        # No jobs at all — bootstrap the very first experiment
-        @info "poller tick: no jobs found; bootstrapping first experiment"
-        best = read_best(project_root)
-        _propose_and_launch(project_root, best)
+        # No jobs at all — bootstrap the first seed group
+        @info "poller tick: no jobs found; bootstrapping first experiment group"
+        _propose_and_launch_group(project_root, read_best(project_root))
         return nothing
     end
 
+    reaped_groups = Set{String}()
     for jobdir in dirs
+        if is_group_child(jobdir)
+            # --- Seed-group child path ---
+            gdir = group_dir_of(jobdir)
+            isfile(joinpath(gdir, ".reaped")) && continue   # group already reaped
+            _tend_child(jobdir)                              # launch PENDING / resume stale-failed
+            if !(gdir in reaped_groups)
+                push!(reaped_groups, gdir)
+                children = group_children(gdir)
+                if all(_child_terminal, children)
+                    @info "poller: group $(basename(gdir)) all seeds terminal → reaping"
+                    reap_group_done(gdir, project_root)
+                else
+                    @info "poller: group $(basename(gdir)) still has seeds running"
+                end
+            end
+            continue
+        end
+
+        # --- Standalone / legacy flat job path (manual job.json drops) ---
         hid        = basename(jobdir)
         reaped_p   = joinpath(jobdir, ".reaped")
         status_p   = joinpath(jobdir, "status")
-
-        # Skip already-reaped jobs (idempotency guarantee)
         isfile(reaped_p) && continue
-
         status = isfile(status_p) ? strip(read(status_p, String)) : "PENDING"
 
         if status == "DONE"
             @info "poller: $hid DONE → reaping"
             reap_done(jobdir, project_root)
-
         elseif status == "FAILED"
             @info "poller: $hid FAILED → retry/discard"
             reap_failed_or_stale(jobdir, project_root; force_failed=true)
-
         elseif status == "RUNNING"
             if is_heartbeat_stale(jobdir)
                 @info "poller: $hid RUNNING but stale heartbeat → treat as FAILED"
@@ -514,18 +733,14 @@ function tick(project_root::AbstractString)::Nothing
             else
                 @info "poller: $hid RUNNING fresh → leaving"
             end
-
         elseif status == "PENDING"
-            # Check how old the PENDING status is
-            mtime_p = mtime(status_p)
-            age     = time() - mtime_p
+            age = time() - mtime(status_p)
             if age > PENDING_GRACE_S
                 @info "poller: $hid PENDING for $(round(age))s → launching"
                 launch_detached(jobdir)
             else
                 @info "poller: $hid PENDING ($(round(age))s old) → waiting for launcher"
             end
-
         else
             @warn "poller: $hid has unknown status '$status' → skipping"
         end

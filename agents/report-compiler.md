@@ -17,8 +17,9 @@ Part of the CC BY-NC 4.0 academic surface — see `skills/surface/NOTICE.md`.
 ## What you do
 
 1. **Gather the parts** from `paper/`: abstract, intro, related-work, methods, results,
-   discussion, references. Confirm each exists; if a required section is missing, report
-   it rather than fabricating filler.
+   discussion, references, and any figures in `paper/figures/` (with `figures.md`). Confirm
+   each exists; if a required section is missing, report it rather than fabricating filler.
+   If `paper/figures/` is empty, note that `/phd:analyze` has not been run.
 2. **Stitch into one manuscript.** Resolve heading levels, cross-references, figure/table
    numbering, and citation style so the document reads as a single coherent paper, not
    concatenated fragments. Keep terminology consistent throughout.

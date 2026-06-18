@@ -19,13 +19,16 @@ single GPU/`val_bpb` budget to a SciML + Yao.jl metric **contract**.
 
 1. **Read** `experiment.md` (the human-edited research org) for the active search axes + constraints.
 2. **Propose** exactly one change, on one axis, reviewable by a human in under two minutes.
-3. **Run** under a fixed wall-clock budget `T` (from `CONTEXT.md`), as a detached job — never inside
-   the session.
-4. **Measure** with `evaluate()` / `score()` → an `ExperimentResult` (lower is better).
-5. **Keep** if strictly better than the current best (commit + KEPT ledger row); else **discard**
-   (DISCARDED row + reason). Ties go to discard — simpler wins.
-6. **Append** an immutable ledger row either way. Negative results are data; they stop dead-end
-   re-tries across sessions.
+3. **Run** under a fixed wall-clock budget `T` (from `CONTEXT.md`), as detached jobs — never inside
+   the session. The change is run over **K seeds** (`seeds_per_hypothesis`, default 3; never 1337).
+4. **Measure** each seed with `evaluate()` / `score()` → an `ExperimentResult` (lower is better),
+   then **aggregate** the K scores to **mean ± std** (`aggregate()` in metric.jl).
+5. **Keep** if the aggregate **mean** strictly beats the current best mean (commit + one KEPT ledger
+   row carrying `mean ± std, n=K`); else **discard** (DISCARDED row + reason). Ties go to discard —
+   simpler wins. The row's `note:` flags whether the gain is **significant (>1σ)** or **within seed
+   noise** so downstream prose stays honest.
+6. **Append** one immutable ledger row per group either way. Negative results are data; they stop
+   dead-end re-tries across sessions.
 
 In `daemon` mode this repeats unattended (~`K · 3600/T` experiments/hour). Each turn is one diff,
 one score, one row.
@@ -61,10 +64,14 @@ not in the score.
 
 ## Keep / discard, precisely
 
-- **Keep:** `new_score < best_score` (strictly). Commit the change; append a KEPT row; update best.
-- **Discard:** `new_score >= best_score`, OR the job failed / exceeded budget without a valid
-  `result.json`, OR (quantum) it did not beat the classical baseline. Append a DISCARDED row with
+- **Keep:** `mean(new seeds) < mean(best)` (strictly). Commit the change; append one KEPT row with
+  `mean ± std, n=K`; update best. The `note:` records whether the improvement exceeds ~1σ
+  ("significant") or sits within seed noise.
+- **Discard:** `mean(new) >= mean(best)`, OR fewer than 2 of K seeds produced a valid score
+  (inconclusive), OR (quantum) it did not beat the classical baseline. Append a DISCARDED row with
   the reason — a well-documented discard maps the failure space and is as valuable as a keep.
+- **Single-seed is not acceptable** for a kept result you intend to report: a lone seed has no
+  variance estimate. K=1 is for quick throwaway checks only.
 
 ---
 

@@ -36,9 +36,13 @@ the fixed held-out split and seed, the budget. Enough to reproduce. State the cl
 baseline construction explicitly for any quantum comparison.
 
 **Results**: chronological by verified hypothesis. Each: what changed (prose, not
-bullets), the quantitative improvement (before → after, %), and — using the §5 candor
-language — whether quantum advantage is *supported*, *not demonstrated*, or *not
-assessed*. Summary table allowed. Best overall result stated plainly.
+bullets), the quantitative improvement as **mean ± std over n seeds** (never a bare
+point estimate) and the % change of the means, whether the gain is **significant (>1σ)
+or within seed noise** (from the ledger `note:`), and — using the §5 candor language —
+whether quantum advantage is *supported*, *not demonstrated*, or *not assessed*.
+**Reference the `paper/figures/` figures** (trajectory with error bars; per-hypothesis
+seed-spread and convergence) with captions. Summary table allowed. Best overall result
+stated plainly with its spread.
 
 **Discussion**: what the trajectory means, the threats `/phd:verify` checked, and
 honest limitations. Follow-up hypotheses from ledger `note:` fields become future work.

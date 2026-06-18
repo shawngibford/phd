@@ -28,8 +28,9 @@ Metric contract rules (from §5 / §5 candor rule)
 module MetricContract
 
 using LinearAlgebra: norm
+using Statistics: mean, std
 
-export ExperimentResult, evaluate, rel_l2, quantum_advantage
+export ExperimentResult, evaluate, rel_l2, quantum_advantage, aggregate, is_improvement_agg
 
 # ---------------------------------------------------------------------------
 # Result carrier
@@ -182,6 +183,59 @@ function quantum_advantage(
         "advantage_demonstrated" => advantage,
     )
     return (ratio = ratio, meta = meta)
+end
+
+# ---------------------------------------------------------------------------
+# Multi-seed aggregation (Slice 4 — statistical rigor)
+# ---------------------------------------------------------------------------
+
+"""
+    aggregate(scores::AbstractVector{<:Real}) -> NamedTuple
+
+Aggregate K per-seed scores of one hypothesis into a robust summary. A single-seed
+result is no result (reproducibility checklists require mean ± std over seeds), so
+the loop runs K seeds and keeps on the aggregate.
+
+Returns `(mean::Float64, std::Float64, n::Int)`.
+  - n == 0           → mean = Inf, std = NaN (nothing to aggregate).
+  - n == 1           → std = 0.0 (single sample, no spread).
+  - Inf/NaN scores   → dropped before aggregating (a crashed seed shouldn't poison
+                       the mean); n reflects the count of *valid* scores.
+"""
+function aggregate(scores::AbstractVector{<:Real})::@NamedTuple{mean::Float64, std::Float64, n::Int}
+    valid = Float64[s for s in scores if !isnan(s) && !isinf(s)]
+    n = length(valid)
+    n == 0 && return (mean = Inf, std = NaN, n = 0)
+    n == 1 && return (mean = valid[1], std = 0.0, n = 1)
+    return (mean = mean(valid), std = std(valid), n = n)   # std = sample std (n-1)
+end
+
+"""
+    is_improvement_agg(new_mean, new_std, best_mean, best_std) -> NamedTuple
+
+Keep/discard decision on aggregated multi-seed results.  Returns
+`(keep::Bool, significant::Bool)`.
+
+  - keep        : strict `new_mean < best_mean` (ties go to discard — simpler wins).
+                  A first result (best_mean = Inf/NaN) always keeps.
+  - significant : the means are separated by more than the larger of the two stds
+                  (a transparent ~1σ check). When false, the improvement is "within
+                  seed noise" — still kept if the mean improved, but flagged honestly
+                  so /phd:verify and /phd:write don't overclaim. (Welch's t-test is a
+                  backlog refinement.)
+"""
+function is_improvement_agg(
+    new_mean::Real, new_std::Real, best_mean::Real, best_std::Real,
+)::@NamedTuple{keep::Bool, significant::Bool}
+    (isnan(new_mean) || isinf(new_mean)) && return (keep = false, significant = false)
+    if isnan(best_mean) || isinf(best_mean)         # first result
+        return (keep = true, significant = true)
+    end
+    keep = new_mean < best_mean
+    sep  = best_mean - new_mean
+    noise = max(isnan(new_std) ? 0.0 : new_std, isnan(best_std) ? 0.0 : best_std)
+    significant = keep && (sep > noise)
+    return (keep = keep, significant = significant)
 end
 
 end # module MetricContract
