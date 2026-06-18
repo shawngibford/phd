@@ -123,6 +123,7 @@ Copy the Julia harness files from the PHD plugin into this directory:
   harness/poller.jl      — watches runs/*/status, aggregates seed groups, keep/discard
   harness/supervisor.jl  — the daemon loop: launch → poll → keep/discard → propose next
   harness/plot.jl        — pure-Julia SVG figures (trajectory ± std, convergence, seed-spread)
+  harness/report.jl      — ledger audit (/phd:stats) + group-aware status (/phd:daemon status)
 
 These files are built as part of the PHD plugin but are not auto-copied into new
 projects. Copy or symlink them from the plugin directory:

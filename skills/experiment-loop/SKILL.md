@@ -25,8 +25,9 @@ single GPU/`val_bpb` budget to a SciML + Yao.jl metric **contract**.
    then **aggregate** the K scores to **mean ± std** (`aggregate()` in metric.jl).
 5. **Keep** if the aggregate **mean** strictly beats the current best mean (commit + one KEPT ledger
    row carrying `mean ± std, n=K`); else **discard** (DISCARDED row + reason). Ties go to discard —
-   simpler wins. The row's `note:` flags whether the gain is **significant (>1σ)** or **within seed
-   noise** so downstream prose stays honest.
+   simpler wins. The row's `note:` flags whether the gain is **significant (Welch p<0.05)** or
+   **within seed noise**, with the p-value, so downstream prose stays honest. Significance annotates;
+   it does **not** gate keeping (the loop still explores small gains).
 6. **Append** one immutable ledger row per group either way. Negative results are data; they stop
    dead-end re-tries across sessions.
 

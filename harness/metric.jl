@@ -30,7 +30,7 @@ module MetricContract
 using LinearAlgebra: norm
 using Statistics: mean, std
 
-export ExperimentResult, evaluate, rel_l2, quantum_advantage, aggregate, is_improvement_agg
+export ExperimentResult, evaluate, rel_l2, quantum_advantage, aggregate, is_improvement_agg, welch_t
 
 # ---------------------------------------------------------------------------
 # Result carrier
@@ -210,32 +210,99 @@ function aggregate(scores::AbstractVector{<:Real})::@NamedTuple{mean::Float64, s
     return (mean = mean(valid), std = std(valid), n = n)   # std = sample std (n-1)
 end
 
+# Pure-Julia log-gamma (Lanczos) — dependency-free, accurate enough for p-values.
+const _LANCZOS = (0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7)
+function _lgamma(x::Float64)::Float64
+    x < 0.5 && return log(π / sin(π * x)) - _lgamma(1.0 - x)   # reflection
+    x -= 1.0
+    a = _LANCZOS[1]
+    for i in 2:9; a += _LANCZOS[i] / (x + (i - 1)); end
+    t = x + 7.5
+    return 0.5 * log(2π) + (x + 0.5) * log(t) - t + log(a)
+end
+
+# Continued-fraction for the incomplete beta (Numerical Recipes), pure Julia.
+function _betacf(a::Float64, b::Float64, x::Float64)::Float64
+    tiny = 1e-30
+    qab = a + b; qap = a + 1.0; qam = a - 1.0
+    c = 1.0; d = 1.0 - qab * x / qap
+    abs(d) < tiny && (d = tiny); d = 1.0 / d; h = d
+    for m in 1:300
+        m2 = 2m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d; abs(d) < tiny && (d = tiny)
+        c = 1.0 + aa / c; abs(c) < tiny && (c = tiny)
+        d = 1.0 / d; h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d; abs(d) < tiny && (d = tiny)
+        c = 1.0 + aa / c; abs(c) < tiny && (c = tiny)
+        d = 1.0 / d; del = d * c; h *= del
+        abs(del - 1.0) < 1e-12 && break
+    end
+    return h
+end
+
+"""Regularized incomplete beta I_x(a,b) ∈ [0,1] — pure Julia, no SpecialFunctions dep."""
+function _betai(a::Float64, b::Float64, x::Float64)::Float64
+    x <= 0.0 && return 0.0
+    x >= 1.0 && return 1.0
+    bt = exp(_lgamma(a + b) - _lgamma(a) - _lgamma(b) + a * log(x) + b * log1p(-x))
+    return x < (a + 1.0) / (a + b + 2.0) ? bt * _betacf(a, b, x) / a :
+                                           1.0 - bt * _betacf(b, a, 1.0 - x) / b
+end
+
 """
-    is_improvement_agg(new_mean, new_std, best_mean, best_std) -> NamedTuple
+    welch_t(m1,s1,n1, m2,s2,n2) -> (t, df, p)
+
+Welch's two-sample t-test (unequal variances) with Welch–Satterthwaite dof and a
+two-sided p-value. Returns NaNs if either group has n<2 or zero pooled variance.
+"""
+function welch_t(m1::Real, s1::Real, n1::Integer, m2::Real, s2::Real, n2::Integer)::@NamedTuple{t::Float64, df::Float64, p::Float64}
+    (n1 < 2 || n2 < 2) && return (t = NaN, df = NaN, p = NaN)
+    v1 = s1^2 / n1; v2 = s2^2 / n2
+    se = sqrt(v1 + v2)
+    se == 0.0 && return (t = NaN, df = NaN, p = NaN)
+    t  = (m1 - m2) / se
+    df = (v1 + v2)^2 / (v1^2 / (n1 - 1) + v2^2 / (n2 - 1))
+    p  = _betai(df / 2.0, 0.5, df / (df + t^2))   # two-sided
+    return (t = Float64(t), df = Float64(df), p = Float64(p))
+end
+
+"""
+    is_improvement_agg(new_mean,new_std,new_n, best_mean,best_std,best_n; alpha=0.05) -> NamedTuple
 
 Keep/discard decision on aggregated multi-seed results.  Returns
-`(keep::Bool, significant::Bool)`.
+`(keep::Bool, significant::Bool, p::Float64)`.
 
   - keep        : strict `new_mean < best_mean` (ties go to discard — simpler wins).
-                  A first result (best_mean = Inf/NaN) always keeps.
-  - significant : the means are separated by more than the larger of the two stds
-                  (a transparent ~1σ check). When false, the improvement is "within
-                  seed noise" — still kept if the mean improved, but flagged honestly
-                  so /phd:verify and /phd:write don't overclaim. (Welch's t-test is a
-                  backlog refinement.)
+                  A first result (best_mean = Inf/NaN) always keeps. Significance does
+                  NOT gate keeping — the loop still explores small gains.
+  - significant : `keep && Welch p < alpha`, when both groups have n≥2. Falls back to a
+                  transparent ~1σ separation when either n<2 (single-seed best / lost
+                  seeds), reporting `p = NaN`. Flagged honestly so /phd:verify and
+                  /phd:write don't overclaim a within-noise improvement.
+  - p           : the two-sided Welch p-value (NaN when not computable).
 """
 function is_improvement_agg(
-    new_mean::Real, new_std::Real, best_mean::Real, best_std::Real,
-)::@NamedTuple{keep::Bool, significant::Bool}
-    (isnan(new_mean) || isinf(new_mean)) && return (keep = false, significant = false)
+    new_mean::Real, new_std::Real, new_n::Integer,
+    best_mean::Real, best_std::Real, best_n::Integer;
+    alpha::Float64 = 0.05,
+)::@NamedTuple{keep::Bool, significant::Bool, p::Float64}
+    (isnan(new_mean) || isinf(new_mean)) && return (keep = false, significant = false, p = NaN)
     if isnan(best_mean) || isinf(best_mean)         # first result
-        return (keep = true, significant = true)
+        return (keep = true, significant = true, p = NaN)
     end
     keep = new_mean < best_mean
-    sep  = best_mean - new_mean
+    if new_n >= 2 && best_n >= 2 && !isnan(new_std) && !isnan(best_std)
+        w = welch_t(new_mean, new_std, new_n, best_mean, best_std, best_n)
+        return (keep = keep, significant = keep && !isnan(w.p) && w.p < alpha, p = w.p)
+    end
+    # Fallback: no variance estimate (single seed somewhere) → ~1σ heuristic.
+    sep   = best_mean - new_mean
     noise = max(isnan(new_std) ? 0.0 : new_std, isnan(best_std) ? 0.0 : best_std)
-    significant = keep && (sep > noise)
-    return (keep = keep, significant = significant)
+    return (keep = keep, significant = keep && (sep > noise), p = NaN)
 end
 
 end # module MetricContract

@@ -1,5 +1,7 @@
 # PHD — Persistent Hypothesis Daemon
 
+[![CI](https://github.com/shawngibford/phd/actions/workflows/ci.yml/badge.svg)](https://github.com/shawngibford/phd/actions/workflows/ci.yml)
+
 A Claude Code plugin that fuses four research tools into one operating system for a PhD: **research → experiment → write → defend**.
 
 ## The four-layer thesis
@@ -31,6 +33,7 @@ The full `/phd:*` lifecycle is wired. Verbs: **P**robe · **H**ypothesize · **D
 | `/phd:run` | Hypothesize | Launch a hypothesis as a multi-seed group (or `--tick` one supervisor pass) |
 | `/phd:daemon` | Hypothesize | `start`/`stop`/`status` the scheduled experiment loop; session can close |
 | `/phd:verify` | Defend | Reproduce KEPT rows; audit leakage / seed-robustness / baselines / citations |
+| `/phd:stats` | Defend | Audit the ledger (integrity + leakage/lost-seed checks) and report keep-rate + best mean ± std |
 | `/phd:analyze` | Defend | Generate figures (trajectory ± std, convergence, seed-spread) → `paper/figures/` |
 | `/phd:write` | Defend | Draft the results section (mean ± std, figures) from verified KEPT rows |
 | `/phd:review` | Defend | Dual review: code over-engineering (governor) + manuscript peer review |
@@ -58,11 +61,21 @@ claude --plugin-dir /path/to/phd
 /phd:init
 ```
 
-Answer the five setup questions. Then copy the Julia harness into `harness/` (see `harness/SETUP.md`) and run `/phd:run` to kick off your first experiment.
+Answer the six setup questions. Then copy the Julia harness into `harness/` (see `harness/SETUP.md`) and run `/phd:run` to kick off your first experiment.
 
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design: language tiers, the four-layer stack, the experiment loop protocol, detached-job lifecycle, per-epoch checkpointing, the LEDGER row format, and the build plan.
+
+## Tests
+
+The Julia harness has a stdlib-`Test` suite (no third-party deps) covering the metric/aggregation/Welch logic, JSON + job-control helpers, and a fixture-based group reap:
+
+```bash
+julia harness/test/runtests.jl
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs it on every push/PR to `main`, plus a manifest/hooks lint.
 
 ## License
 

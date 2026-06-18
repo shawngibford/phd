@@ -25,6 +25,11 @@ Read, in this order:
    - which axes already produced KEPT improvements (what's working),
    - the recent DISCARDED hypotheses (dead ends — do not re-propose them).
 4. `experiment.md` — the search axes and hard constraints.
+5. `paper/related-work.md` — **if present** (written by `/phd:probe`): its closing
+   **gap-analysis** paragraph states what prior work leaves open and how this project's
+   question addresses it. Read it so the hypothesis targets that gap. If it's absent, note
+   that running `/phd:probe` first would ground the hypothesis in the literature and
+   strengthen its novelty claim.
 
 If `$ARGUMENTS` contains a free-text idea, treat it as the candidate hypothesis and
 your job is to sharpen and de-risk it. Otherwise, propose one yourself from the ledger
@@ -51,6 +56,13 @@ A PHD hypothesis has four parts. Draft all four:
 or a near-duplicate — was already tried and discarded, say so and either propose a
 materially different variant or explain why it's worth retrying (e.g. a confound has
 since changed). Negative results in the ledger exist precisely to stop this.
+
+**Novelty / gap-alignment check (advisory):** if `paper/related-work.md` exists, weigh the
+hypothesis against its gap analysis: does this change actually attack the stated gap, and
+is it genuinely novel versus the prior work surveyed there? If it's off-target or appears
+already-done in the literature, **warn** the user and suggest a sharper, gap-aligned
+variant — but this never blocks: the researcher may proceed deliberately. State the
+alignment in one line so it carries into the confirmation summary.
 
 **Quantum candor:** if the change is to a quantum model and the claim implies advantage,
 the plan must include a fairly-tuned classical baseline in the experiment's `meta`. State

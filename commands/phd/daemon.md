@@ -131,38 +131,27 @@ an interrupted start).
 
 Print a concise summary of the daemon and the current experiment state.
 
-1. Read `daemon.json` to check if the daemon is registered. If not, note it.
-2. Count jobs by status (scan `runs/*/status`):
-   - RUNNING: N
-   - PENDING: N
-   - DONE (and reaped): N
-   - FAILED: N
-3. Read `best.json` for the current best score and hypothesis.
-4. Read the last 3 entries from `LEDGER.md` (parse by `## H-` header lines).
-5. Read `heartbeat` from any RUNNING job directory for live epoch progress.
-6. Report:
+1. Read `daemon.json` to check if the daemon is registered, and compute the **next tick**
+   (registration time + interval). This is the command-level / schedule part.
+
+2. Get the **group-aware experiment state** from the harness — it understands multi-seed
+   groups (`runs/hNNN/sK/`), so it won't miscount seed children as separate experiments:
+   ```
+   julia harness/report.jl status <project_root>
+   ```
+   This reports job counts by status, per-RUNNING-child **epoch progress + ETA**, per-group
+   **seeds-terminal** rollup, the best result (mean ± std, n), keep rate, and the recent ledger
+   tail. Relay it.
+
+3. **Combine** the schedule line with the harness status into one report, e.g.:
 
    ```
    PHD Daemon Status
    -----------------
-   Schedule:     every 5 minutes  [ACTIVE]
-   Task name:    phd-daemon-my-qml-project
+   Schedule:      every 5 minutes  [ACTIVE]   next tick ~3 min
+   Task name:     phd-daemon-my-qml-project
 
-   Jobs:
-     RUNNING  2   (H-041: epoch 37/100, H-042: epoch 12/100)
-     PENDING  0
-     DONE     18  (17 reaped)
-     FAILED   1   (H-039: retry 2/3)
-
-   Best so far:  H-037  score=0.029  (rel_L2)  2026-06-15
-   Total runs:   21
-
-   Recent ledger:
-     H-040 · KEPT      score 0.031 → 0.029  (best so far)
-     H-039 · DISCARDED  score 0.047  (retry in progress)
-     H-038 · DISCARDED  score 0.051  (no improvement)
-
-   Next tick:    in ~3 minutes
+   <harness/report.jl status output: jobs, per-seed progress/ETA, groups, best, keep rate, ledger tail>
    ```
 
 If the daemon is not registered:
@@ -170,8 +159,9 @@ If the daemon is not registered:
    Daemon: NOT RUNNING  (no daemon.json found)
    Start with: /phd:daemon start
    ```
-   But still show the job counts and best score — state is on disk and visible
-   even without a running schedule.
+   But still run `report.jl status` and show it — state is on disk and visible even without a
+   running schedule. If Julia/the harness is absent, fall back to reading `best.json` and
+   counting `runs/*/status` (and group children) yourself, and say the harness wasn't available.
 
 ---
 

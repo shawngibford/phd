@@ -66,7 +66,7 @@ For every selected row, check each. Any hit is a finding, not a pass.
    seed-cherry-picking is structurally prevented. Verify instead that the row is *honest*:
    re-aggregate the K child results under `runs/<hid>/s*/result.json` and confirm the row's
    mean ± std and n match (flag **AGG-DRIFT** on mismatch); confirm n ≥ 2 and the seed list
-   excludes the held-out 1337; and if the `note:` says "within seed noise (≤1σ)", ensure the
+   excludes the held-out 1337; and if the `note:` says "within seed noise" (Welch p ≥ 0.05), ensure the
    prose does **not** present the improvement as decisive. A single-seed (n=1) KEPT row is
    itself a finding — flag **SINGLE-SEED** and recommend re-running with `seeds_per_hypothesis ≥ 3`.
 3. **Unfair or missing baseline (quantum candor).** For any row whose claim implies

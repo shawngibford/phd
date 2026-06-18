@@ -29,6 +29,9 @@ Adapted from [autoresearch](https://github.com/karpathy/autoresearch) (MIT).
    (dead ends). Only read rows below the `<!-- Experiment rows are appended below this line -->`
    marker — the Example/Format rows above it are documentation, not data.
 3. **`STATE.md`** — the active hypothesis and phase, for continuity.
+4. **`paper/related-work.md`** — if present (from `/phd:probe`): its gap-analysis paragraph.
+   Prefer changes that attack the stated gap; avoid proposing something the surveyed prior
+   work already did. Advisory — if it's absent, proceed from the ledger and experiment.md.
 
 ---
 

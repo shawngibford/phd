@@ -600,7 +600,7 @@ end
 All children terminal → aggregate their scores to mean±std, one keep/discard
 decision against best.json, one ledger row, propose the next group.
 """
-function reap_group_done(groupdir::AbstractString, project_root::AbstractString)::Nothing
+function reap_group_done(groupdir::AbstractString, project_root::AbstractString; launch_next::Bool = true)::Nothing
     hid      = basename(groupdir)
     children = group_children(groupdir)
     gmeta    = isfile(joinpath(groupdir, "group.json")) ?
@@ -624,7 +624,8 @@ function reap_group_done(groupdir::AbstractString, project_root::AbstractString)
     best = read_best(project_root)
     best_mean = Float64(get(best, "score", Inf))
     best_std  = Float64(get(best, "std", 0.0))
-    dec  = is_improvement_agg(agg.mean, agg.std, best_mean, best_std)
+    best_n    = Int(get(best, "n", 1))
+    dec  = is_improvement_agg(agg.mean, agg.std, agg.n, best_mean, best_std, best_n)
 
     # Aggregate result for the group dir + baseline meta from the first child that has it.
     child_meta = Dict{String,Any}()
@@ -651,8 +652,9 @@ function reap_group_done(groupdir::AbstractString, project_root::AbstractString)
         note   = "inconclusive: only $(agg.n) of $(length(children)) seeds produced a valid score"
     elseif dec.keep
         status = "KEPT"
-        sig    = dec.significant ? "significant (>1σ)" : "within seed noise (≤1σ)"
-        note   = "kept on mean of $(agg.n) seeds; improvement $(sig)"
+        pstr   = isnan(dec.p) ? "" : ", Welch p=$(round(dec.p, sigdigits=2))"
+        sig    = dec.significant ? "significant" : "within seed noise"
+        note   = "kept on mean of $(agg.n) seeds; improvement $(sig)$(pstr)"
         write_best(project_root, Dict{String,Any}(
             "hid" => hid, "score" => agg.mean, "mean" => agg.mean, "std" => agg.std,
             "n" => agg.n, "jobdir" => groupdir))
@@ -667,7 +669,7 @@ function reap_group_done(groupdir::AbstractString, project_root::AbstractString)
     _jc_write_atomic(joinpath(groupdir, ".reaped"), "reaped")
     @info "reap_group_done: $hid $status  mean=$(round(agg.mean,sigdigits=5))±$(round(agg.std,sigdigits=2)) (n=$(agg.n))"
 
-    _propose_and_launch_group(project_root, read_best(project_root))
+    launch_next && _propose_and_launch_group(project_root, read_best(project_root))
     return nothing
 end
 

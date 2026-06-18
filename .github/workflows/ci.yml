@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  harness-tests:
+    name: Julia harness tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - name: Run harness test suite
+        run: julia harness/test/runtests.jl
+
+  lint:
+    name: Manifest + hooks lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate JSON manifests
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('.claude-plugin/plugin.json'))"
+          node -e "JSON.parse(require('fs').readFileSync('hooks/hooks.json'))"
+      - name: Check hook scripts parse
+        run: for f in hooks/*.mjs; do node --check "$f"; done
+      - name: Confirm declared skills resolve
+        run: |
+          node -e "const m=JSON.parse(require('fs').readFileSync('.claude-plugin/plugin.json'));const fs=require('fs');for(const s of m.skills){if(!fs.existsSync(s.replace(/^\.\//,'')+'SKILL.md'))throw new Error('missing skill: '+s)}"
