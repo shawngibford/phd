@@ -1,0 +1,10 @@
+{
+  "hid": "h001",
+  "diff": "baseline: coordinate-wise finite-difference gradient descent on Lotka-Volterra parameter recovery; initial parameters perturbed from true values by ±25%",
+  "budget_s": 120,
+  "backend": "cpu",
+  "seed": 42,
+  "max_epochs": 200,
+  "parallel_k": 2,
+  "project_file": "/path/to/phd/examples/lotka-volterra/project.jl"
+}

@@ -1,0 +1,38 @@
+Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
+
+The academic-research surface bundled in this directory (skills/surface/) is
+licensed under the Creative Commons Attribution-NonCommercial 4.0 International
+License, following its upstream, academic-research-skills by Imbad0202.
+
+To view a copy of this license, visit:
+    https://creativecommons.org/licenses/by-nc/4.0/
+or send a letter to:
+    Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+
+You are free to:
+  - Share — copy and redistribute the material in any medium or format.
+  - Adapt — remix, transform, and build upon the material.
+
+Under the following terms:
+  - Attribution — You must give appropriate credit (see NOTICE.md in this
+    directory), provide a link to the license, and indicate if changes were
+    made. You may do so in any reasonable manner, but not in any way that
+    suggests the licensor endorses you or your use.
+  - NonCommercial — You may not use the material for commercial purposes.
+  - No additional restrictions — You may not apply legal terms or technological
+    measures that legally restrict others from doing anything the license
+    permits.
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+----------------------------------------------------------------------------
+
+License boundary note for PHD maintainers:
+
+Everything inside skills/surface/ is governed by CC BY-NC 4.0. Because PHD
+bundles this directory, the PHD distribution as a whole is non-commercial
+(see the repository-root NOTICE.md). The rest of PHD's glue code (commands,
+templates, hooks, agents outside surface, the code-minimalism skill) is MIT.
+To obtain a fully-MIT, commercial-friendly build, remove skills/surface/
+entirely and drop the /phd:probe, /phd:review, and /phd:defend commands that
+depend on it.

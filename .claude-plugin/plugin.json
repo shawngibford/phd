@@ -1,0 +1,31 @@
+{
+  "name": "phd",
+  "displayName": "PHD — Persistent Hypothesis Daemon",
+  "version": "0.1.0",
+  "description": "Persistent Hypothesis Daemon — a research OS for PhD work (research → experiment → write → defend). Fuses gsd-core, autoresearch, academic-research-skills, and ponytail into one unified plugin for quantum ML / SciML research.",
+  "author": {
+    "name": "shawn",
+    "url": "https://github.com/shawngibford"
+  },
+  "license": "SEE NOTICE.md",
+  "keywords": [
+    "research",
+    "phd",
+    "hypothesis",
+    "sciml",
+    "quantum-ml",
+    "experiment-loop",
+    "claude-code"
+  ],
+  "homepage": "https://github.com/shawngibford/phd",
+  "repository": "https://github.com/shawngibford/phd",
+  "commands": "./commands/phd/",
+  "hooks": "./hooks/hooks.json",
+  "skills": [
+    "./skills/code-minimalism/",
+    "./skills/surface/academic-paper/",
+    "./skills/surface/academic-paper-reviewer/",
+    "./skills/surface/academic-pipeline/",
+    "./skills/surface/deep-research/"
+  ]
+}
