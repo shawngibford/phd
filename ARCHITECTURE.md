@@ -1,6 +1,6 @@
 # PHD — Persistent Hypothesis Daemon
 
-**Architecture & integration design — v0.1 (design pass, pre-scaffold)**
+**Architecture & integration design — implemented & gate-validated (Slices 1–4 + hardening + backlog)**
 
 A single Claude Code plugin that fuses four upstream tools into one research operating
 system for a PhD: research → build/experiment → write → defend. Curated merge — only the
@@ -15,6 +15,33 @@ experiment search on the most efficient backend, parallelized across the search 
 > qTinyRecursive Protein LM (QTRPLM) is a **separate project** — a *target* PHD helps you
 > build, not part of PHD's own harness. PHD ships no Python; it can still drive Python/torch
 > work in any project it operates on.
+
+---
+
+## Status (current)
+
+**Built, gate-validated, and shipped** to <https://github.com/shawngibford/phd> (`main`, latest
+`Backlog sweep`). The sections below are the original design record; this block is the live state.
+
+- **Slices 1–3 — done, Slice 1 gate PASSED.** Full `/phd:*` lifecycle wired (12 commands);
+  Lotka–Volterra dry run confirmed real scorer, detached launch, crash-safe resume, KEPT→draft.
+- **Hardening — done.** Fixed 7 harness bugs found in review (world-age project loading via
+  `invokelatest`, `launch_detached` Cmd/pid, numeric checkpoint sort, no-op ledger lock → atomic
+  `mkdir` lock, ExperimentResult contract check, seed pool excluding held-out 1337). Anti-fabrication
+  fix: the ledger template example is fenced so tools never draft it as a real result.
+- **Slice 4 — done.** Statistical rigor: a hypothesis runs over **K seeds** (`seeds_per_hypothesis`,
+  default 3) as a group under `runs/hNNN/sK/`, reaped once to **mean ± std** with a **Welch t-test**
+  significance flag (pure-Julia, no deps; annotates only — keep stays on the mean). Automated figures
+  via pure-Julia SVG (`harness/plot.jl`, `/phd:analyze`): trajectory ± std, convergence, seed-spread.
+- **Backlog — done.** `/phd:stats` ledger audit + group-aware `/phd:daemon status` (shared
+  `harness/report.jl`); probe→hypothesize novelty check (advisory); a stdlib-`Test` suite
+  (`harness/test/`, 56 tests) + GitHub Actions CI (`.github/workflows/ci.yml`).
+
+**Components beyond §3/§4 below:** commands `analyze`, `stats`; agents `experiment-runner`; skills
+`experiment-loop`; harness `jobctl.jl`, `plot.jl`, `report.jl`; `harness/test/`; `.github/workflows/`.
+
+**Possible next:** tag a `v0.1.0` release; real-project shakedown beyond the LV toy; (deferred, §8)
+GPU/Metal backends; campaign/tree-search exploration. No active obligations.
 
 ---
 
@@ -322,11 +349,15 @@ are data, and protect against re-testing dead ends across sessions).
 
 ## 7. Build plan — thin vertical slice first
 
+> **All slices below are complete.** The Slice 1 gate **PASSED** (Lotka–Volterra dry run). Slices
+> 2–4 + a hardening pass + the backlog sweep followed. See **Status (current)** at the top for the
+> live state. This section is kept as the original build order.
+
 Decision: validate the **ledger spine end-to-end** on a minimal command set before vendoring
 the full academic surface. The slice is `init → run → write`, proving loop → ledger → draft
 round-trips with crash-safe jobs. Everything else is layered on only after the spine holds.
 
-**Slice 1 — vertical spine (the validation gate):**
+**Slice 1 — vertical spine (the validation gate):** ✅ done, gate PASSED.
 1. `plugin.json`, dir tree, `/phd:init`, STATE/CONTEXT/LEDGER/experiment templates, NOTICE +
    license boundary.
 2. Harness: `device.jl` (CPU-only), `metric.jl` contract, `runner.jl` (detached + per-epoch
@@ -336,11 +367,18 @@ round-trips with crash-safe jobs. Everything else is layered on only after the s
    search runs detached; a killed job resumes from last `.ckpt`; KEPT rows reach the draft.
    *Do not proceed until this passes.*
 
-**Slice 2 — governor + backbone:** ponytail → `code-minimalism` skill + hook; gsd phase-loop
+**Slice 2 — governor + backbone:** ✅ done. ponytail → `code-minimalism` skill + hook; gsd phase-loop
 prompts + `plan-executor` agent; `/phd:frame`, `/phd:hypothesize`, `/phd:verify`.
 
-**Slice 3 — full academic surface:** vendor ars skills/agents/commands under `skills/surface/`;
-wire `/phd:probe`, `/phd:review`, `/phd:defend`.
+**Slice 3 — full academic surface:** ✅ done. ars-style skills/agents under `skills/surface/`
+(CC BY-NC boundary); wire `/phd:probe`, `/phd:review`, `/phd:defend`. (Plus `experiment-runner` agent
+and `experiment-loop` skill, which §3/§4 list but were built in a later parity pass.)
+
+**Slice 4 — statistical rigor + figures:** ✅ done. Multi-seed groups (`runs/hNNN/sK/`) → mean ± std
+with a Welch significance flag (`metric.jl`); pure-Julia SVG figures (`harness/plot.jl`, `/phd:analyze`).
+
+**Backlog sweep:** ✅ done. `/phd:stats` + `harness/report.jl` (audit + group-aware status);
+probe→hypothesize novelty check; `harness/test/` stdlib suite + GitHub Actions CI.
 
 ---
 
@@ -356,4 +394,13 @@ wire `/phd:probe`, `/phd:review`, `/phd:defend`.
    (Slice 1, §7) before vendoring the full academic surface.
 4. **`/phd:frame` keeps the full Socratic dialogue.** Radical conciseness applies to *code*,
    not to the framing/research dialogue.
+5. **Multi-seed by default (Slice 4).** A hypothesis runs over K seeds (`seeds_per_hypothesis`,
+   default 3; never the held-out 1337) and is kept on the **mean ± std**. Single-seed results are
+   not reported.
+6. **Significance annotates, it does not gate.** Welch's t-test flags an improvement as significant
+   (p<0.05) or "within seed noise" in the ledger note; keep/discard stays on the mean so the loop
+   keeps exploring small gains.
+7. **No new Julia/JS deps.** Stats (Welch via hand-rolled incomplete beta) and figures (SVG) are
+   pure-Julia/stdlib; the harness drops into any project. A project may swap its own Makie/Plots
+   recipe behind `harness/plot.jl`'s `generate_figures` entry point.
 ```
