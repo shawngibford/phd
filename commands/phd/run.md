@@ -23,37 +23,46 @@ parameter override), you:
    constraints apply.
 3. Read `LEDGER.md` (recent entries) to avoid proposing a variation that was
    already tried and discarded.
-4. Determine the next hypothesis ID by scanning `runs/` for existing `hNNN/`
+4. **Propose the change (unless overridden).** If the user did NOT supply an
+   explicit hypothesis/change (or `--hid` for a manual retry), spawn the
+   **experiment-runner** subagent in fresh context. It reads `experiment.md`,
+   `LEDGER.md`, and `STATE.md` and returns a single-axis, reviewable change spec
+   (HYPOTHESIS / CHANGE / AXIS / EXPECT / SEED / BUDGET_S / BASELINE / KILL_IF /
+   DEAD_END_CHECK). Use that spec to fill `job.json` below. If the user *did*
+   supply a hypothesis/change, skip the agent and use theirs.
+5. Determine the next hypothesis ID by scanning `runs/` for existing `hNNN/`
    directories (`_next_hid` logic: find the highest number, add one).
-5. Build a `job.json` for the new experiment. Required fields:
+6. Build a `job.json` for the new experiment from the proposal (or the user's
+   override). Required fields:
 
    ```json
    {
      "hid": "h042",
-     "seed": 1337,
+     "seed": 42,
      "budget_s": 300,
      "max_epochs": 100,
      "backend": "cpu",
      "learning_rate": 0.05,
-     "hypothesis": "<one sentence from experiment.md framing>",
-     "change":    "<what changed vs the current best>"
+     "hypothesis": "<from experiment-runner's HYPOTHESIS, or the user's>",
+     "change":    "<from experiment-runner's CHANGE, or the user's>"
    }
    ```
 
-   If the user supplied overrides (e.g. `/phd:run --seed 7 --budget 600`),
-   apply them to these defaults.
+   **Never use seed 1337** — that is the fixed held-out trajectory seed and using
+   it for a run is a leakage violation. If the user supplied overrides (e.g.
+   `/phd:run --seed 7 --budget 600`), apply them to these defaults.
 
-6. Create the directory `runs/<hid>/`.
-7. Write `runs/<hid>/job.json` (atomic: write to `.tmp_job.json` first, then
+7. Create the directory `runs/<hid>/`.
+8. Write `runs/<hid>/job.json` (atomic: write to `.tmp_job.json` first, then
    rename).
-8. Write `runs/<hid>/status` containing the single token `PENDING`.
-9. Launch the job detached:
+9. Write `runs/<hid>/status` containing the single token `PENDING`.
+10. Launch the job detached:
    ```
    julia harness/runner.jl runs/<hid>/ > runs/<hid>/stdout.log 2> runs/<hid>/stderr.log &
    ```
    The `&` (or OS-equivalent detach) is critical — the job must not block.
    On macOS/Linux use `nohup ... &`; on Windows use `start /b ...`.
-10. Report the job ID, the command used, and where to watch the logs.
+11. Report the job ID, the command used, and where to watch the logs.
 
 **After launching**, give the user a warm summary:
 

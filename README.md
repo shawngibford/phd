@@ -35,11 +35,12 @@ The full `/phd:*` lifecycle is wired. Verbs: **P**robe · **H**ypothesize · **D
 | `/phd:review` | Defend | Dual review: code over-engineering (governor) + manuscript peer review |
 | `/phd:defend` | Defend | Gate → compile → AI-disclosure → export the final manuscript |
 
-**Skills** (auto-trigger, no slash): `code-minimalism` (governor), and the academic surface
-`academic-paper`, `academic-paper-reviewer`, `academic-pipeline`, `deep-research`.
+**Skills** (auto-trigger, no slash): `code-minimalism` (governor), `experiment-loop` (loop
+protocol), and the academic surface `academic-paper`, `academic-paper-reviewer`,
+`academic-pipeline`, `deep-research`.
 
-**Subagents** (fresh 200k context): `plan-executor`, `research-architect`, `synthesis`,
-`report-compiler`.
+**Subagents** (fresh 200k context): `experiment-runner` (proposes the next experiment),
+`plan-executor`, `research-architect`, `synthesis`, `report-compiler`.
 
 > **License note:** the academic surface lives under `skills/surface/` (CC BY-NC 4.0) — so
 > `/phd:probe`, `/phd:review`, and `/phd:defend` are non-commercial. Remove `skills/surface/`

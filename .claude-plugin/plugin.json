@@ -23,6 +23,7 @@
   "hooks": "./hooks/hooks.json",
   "skills": [
     "./skills/code-minimalism/",
+    "./skills/experiment-loop/",
     "./skills/surface/academic-paper/",
     "./skills/surface/academic-paper-reviewer/",
     "./skills/surface/academic-pipeline/",

@@ -35,6 +35,14 @@ Collect only entries whose status is exactly `KEPT`. If there are no KEPT rows, 
 
 > "The ledger contains no KEPT hypotheses yet. Results can only be drafted from experiments the daemon has verified and kept. Run `/phd:run` or `/phd:daemon start` to accumulate results, then re-run `/phd:write`."
 
+### Verification gate (warn, don't hard-block)
+
+Before drafting, check `paper/verification.md`. If it is **absent**, or any KEPT row you are about to draft is not marked `VERIFIED` / `VERIFIED-NO-ADVANTAGE` there, warn the user:
+
+> "⚠ These results have not been verified. `/phd:write` will draft from the ledger as-is, but a draft built on unreproduced results is fragile — `/phd:verify` reproduces each KEPT row and flags leakage, p-hacking, and unsupported advantage claims. Recommend running `/phd:verify` first. Draft anyway? (yes / run verify first)"
+
+If the user proceeds, draft only the rows that exist; for any row lacking a `VERIFIED` verdict, do not assert quantum advantage for it regardless of its `baseline:` field (an unverified baseline is not evidence). This mirrors the `academic-paper` skill's rule: draw narrative claims only from verified rows.
+
 ---
 
 ## Step 3 — Determine quantum-advantage status for each row

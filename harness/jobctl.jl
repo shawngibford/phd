@@ -220,13 +220,27 @@ function launch_detached(jobdir::AbstractString; resume::Bool = false)::Int
     cmd_args = String[Base.julia_cmd()..., runner, jobdir]
     resume && push!(cmd_args, "--resume")
 
-    # Open log files and spawn detached process.
+    # Leave status as-is (PENDING) and let the runner write RUNNING itself at
+    # startup. The runner's own guard ("RUNNING && !resume → abort") already makes
+    # a duplicate launch safe: the second runner no-ops cleanly. (Do NOT pre-write
+    # RUNNING here — that would trip the launched runner's own guard and make it
+    # no-op, and a heartbeat-less RUNNING job looks stale to the poller.)
+    #
     # `detach` is only a valid keyword on the Cmd(::Cmd; ...) constructor, not on
     # Cmd(::Vector); build the command first, then wrap it to set detach.
     stdout_io = open(stdout_log, "a")
     stderr_io = open(stderr_log, "a")
-    proc = run(pipeline(Cmd(Cmd(cmd_args); detach=true), stdout=stdout_io, stderr=stderr_io);
-               wait=false)
+    local proc
+    try
+        proc = run(pipeline(Cmd(Cmd(cmd_args); detach=true), stdout=stdout_io, stderr=stderr_io);
+                   wait=false)
+    catch e
+        # Spawn itself failed — mark FAILED so the poller doesn't wait on a job
+        # that never started.
+        _jc_write_atomic(status_path, "FAILED")
+        close(stdout_io); close(stderr_io)
+        rethrow(e)
+    end
     # The file handles are owned by the OS process; we close our references
     close(stdout_io)
     close(stderr_io)
@@ -370,25 +384,21 @@ header (from templates/LEDGER.md if available, else a minimal header).
 """
 function append_ledger_row(project_root::AbstractString, row::AbstractString)::Nothing
     ledger = ledger_path(project_root)
-    lock_file = ledger * ".lock"
+    lock_dir = ledger * ".lock"
 
-    # BUG 6 FIX: acquire lock via O_CREAT|O_EXCL open — atomic exclusive creation.
-    # On POSIX (Linux/macOS) open(2) with O_CREAT|O_EXCL returns EEXIST if the
-    # file already exists, making the test-and-set atomic.  rename(2) is NOT safe
-    # here because it replaces the destination even if it exists (POSIX semantics).
-    # We access O_EXCL via Julia's Base.Filesystem.open with the "excl" flag.
+    # Atomic exclusive lock via mkdir: on POSIX `mkdir` is a single atomic
+    # test-and-set — it throws if the directory already exists, so exactly one
+    # process can hold the lock at a time. (An earlier version used
+    # `Base.open(...; create=true)`, which has no O_EXCL and silently succeeds on
+    # an existing file — i.e. it was a no-op lock and provided no mutual exclusion.)
     acquired = false
     for _ in 1:100
         try
-            # Equivalent of open(lock_file, O_WRONLY|O_CREAT|O_EXCL).
-            # `lock=false` disables Julia's own per-file lock (we ARE the lock).
-            io = Base.open(lock_file, write=true, create=true, truncate=false, append=false, lock=false)
-            # If we reach here the file was created exclusively (we won the race).
-            try; print(io, getpid()); finally; close(io); end
+            mkdir(lock_dir)            # throws IOError(EEXIST) if held by another process
             acquired = true
             break
         catch
-            # File already exists (another process holds the lock) — retry.
+            # Lock held elsewhere — back off and retry.
         end
         sleep(0.1)
     end
@@ -412,7 +422,7 @@ function append_ledger_row(project_root::AbstractString, row::AbstractString)::N
             println(io, "\n", row)
         end
     finally
-        acquired && isfile(lock_file) && rm(lock_file; force=true)
+        acquired && isdir(lock_dir) && rm(lock_dir; force=true, recursive=true)
     end
     return nothing
 end

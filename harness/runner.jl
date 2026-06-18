@@ -618,6 +618,13 @@ function run_job(jobdir::AbstractString; resume::Bool = false)::Nothing
             # 5b. Score
             result = Base.invokelatest(score, model, data, max(0.0, remaining_budget - (time() - epoch_start)))
 
+            # Contract check: a project's score() must return an ExperimentResult.
+            # Fail loudly with a useful message instead of writing garbage result.json.
+            result isa ExperimentResult || error(
+                "score() must return an ExperimentResult (score::Float64, wall_s::Float64, " *
+                "meta::Dict); got $(typeof(result)) at epoch $epoch. Fix your project's score() hook.")
+            isfinite(result.score) || @warn "score() returned non-finite score=$(result.score) at epoch $epoch"
+
             epoch_wall = time() - epoch_start
 
             # 5c. Write checkpoint — MUST flush before continuing
